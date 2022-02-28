@@ -45,7 +45,7 @@ df1$weights=1
 ```{r,echo=FALSE}
 resolution_df=data.frame()
 for(i in seq(0.01,1.01,by=0.01)){
-  print(i)
+  #print(i)
   c1=cluster_resolution(df1, t=i,RandomOrder=NULL)
   c1=as.data.frame(c1)
   c1$node_id=rownames(c1)%>%as.numeric()
@@ -70,6 +70,8 @@ for(i in seq(0.01,1.01,by=0.01)){
 }
 
 ```
+
+
 ```{r}
 
 confer_df_ind=which(resolution_df$communities==12)
@@ -81,14 +83,8 @@ ggplot(data=resolution_df,aes(x=res,y=min))+geom_line(color="blue")+
   geom_vline(xintercept=min_res,color="red",linetype="dashed")+
   geom_vline(xintercept=max_res,color="red",linetype="dashed")+
   scale_y_continuous(
-    
-    # Features of the first axis
     name = "Sameness Rate",
-    
-    # Add a second axis and specify its features
     sec.axis = sec_axis(~.*100, name="Number of Communities",breaks = seq(10,120,10)))+
       labs(x="Resolution")+
-      scale_x_continuous(n.breaks = 10)+
-      theme_bw()
-  
+      scale_x_continuous(n.breaks = 10)
 ```
