@@ -171,7 +171,7 @@ Using the Forced Atlas layout, the college football league does appear to have s
 c1$between=betweenness(foot_ball)
 
 between_plot=ggplot(data=c1,aes(x=as.factor(community),y=between))+
-  geom_violin(aes(fill=as.factor(community)))+
+  geom_boxplot(aes(fill=as.factor(community)))+
   theme_bw()+
   labs(x="Community ID",y="Betweeness")+
   theme(legend.position = "none")
@@ -190,7 +190,7 @@ I use data my own data on containerized shipping schedules for 2015 North Americ
 
 As with before, I iterate through a variety of different resolution parameters and choose $t*=0.86.$ At this resolution, I pick up nine (9) communities. 
 
-```{r,echo=FALSE,include=TRUE}
+```{r,echo=FALSE,include=FALSE}
 
 network_data <- read_csv("/Users/davidmterner/Desktop/IU/INFO/Complex Systems/Carbon Ship 1/network_data.csv")
 network_data=filter(network_data,year==2015)
