@@ -7,24 +7,88 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+options(dplyr.summarise.inform = FALSE)
+library(ggplot2)
+library(igraph)
+#devtools::install_github("analyxcompany/ForceAtlas2")
+library(ForceAtlas2)
+#devtools::install_github("analyxcompany/resolution")
+library(resolution)
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r, echo=FALSE,include=FALSE}
+foot_ball=igraph::read_graph("football.gml",format = "gml")
+layout <- layout.forceatlas2(foot_ball, iterations=1000)
 ```
 
-## Including Plots
+```{r}
+#plot(foot_ball, layout=layout)
+#cluster_resolution(foot_ball, t=0.5)
 
-You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+
+df_nodes=data.frame(program_name=V(foot_ball)$label,
+                    program_group=V(foot_ball)$value)
+df_nodes=df_nodes%>%mutate(node_id=seq_along(program_name))
+df_layout=as.data.frame(layout)
+colnames(df_layout)<-c("x","y")
+df_nodes=cbind(df_nodes,df_layout)
+
+df1=as_data_frame(foot_ball)
+df1$weights=1
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r,echo=FALSE}
+resolution_df=data.frame()
+for(i in seq(0.01,1.01,by=0.01)){
+  print(i)
+  c1=cluster_resolution(df1, t=i,RandomOrder=NULL)
+  c1=as.data.frame(c1)
+  c1$node_id=rownames(c1)%>%as.numeric()
+  rownames(c1)<-c()
+
+  c1=c1%>%inner_join(select(df_nodes,node_id,program_group),by="node_id")
+
+  min1=c1%>%group_by(community,program_group)%>%
+    summarise(count=n())%>%
+    ungroup()%>%
+    group_by(program_group)%>%
+    mutate(top_c=max(count)/sum(count))%>%
+    ungroup()%>%
+    summarise(x1=median(top_c))%>%
+    unlist()
+
+  resolution_df=rbind(resolution_df,
+                    data.frame(res=i,
+                               min=min1,
+                               communities=  c1$community%>%unique()%>%length()))
+
+}
+
+```
+```{r}
+
+confer_df_ind=which(resolution_df$communities==12)
+min_res=resolution_df$res[confer_df_ind[1]]
+max_res=resolution_df$res[confer_df_ind%>%tail(1)]
+
+ggplot(data=resolution_df,aes(x=res,y=min))+geom_line(color="blue")+
+  geom_line( aes(y=communities/100))+
+  geom_vline(xintercept=min_res,color="red",linetype="dashed")+
+  geom_vline(xintercept=max_res,color="red",linetype="dashed")+
+  scale_y_continuous(
+    
+    # Features of the first axis
+    name = "Sameness Rate",
+    
+    # Add a second axis and specify its features
+    sec.axis = sec_axis(~.*100, name="Number of Communities",breaks = seq(10,120,10)))+
+      labs(x="Resolution")+
+      scale_x_continuous(n.breaks = 10)+
+      theme_bw()
+  
+```
