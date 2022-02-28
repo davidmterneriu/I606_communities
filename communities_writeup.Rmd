@@ -24,7 +24,7 @@ foot_ball=igraph::read_graph("football.gml",format = "gml")
 layout <- layout.forceatlas2(foot_ball, iterations=1000)
 ```
 
-```{r}
+```{r,include=FALSE, echo=FALSE}
 #plot(foot_ball, layout=layout)
 #cluster_resolution(foot_ball, t=0.5)
 
@@ -72,19 +72,273 @@ for(i in seq(0.01,1.01,by=0.01)){
 ```
 
 
-```{r}
-
+```{r,echo=FALSE,include=FALSE}
 confer_df_ind=which(resolution_df$communities==12)
 min_res=resolution_df$res[confer_df_ind[1]]
 max_res=resolution_df$res[confer_df_ind%>%tail(1)]
 
-ggplot(data=resolution_df,aes(x=res,y=min))+geom_line(color="blue")+
+plot1=ggplot(data=resolution_df,aes(x=res,y=min))+geom_line(color="blue")+
   geom_line( aes(y=communities/100))+
   geom_vline(xintercept=min_res,color="red",linetype="dashed")+
   geom_vline(xintercept=max_res,color="red",linetype="dashed")+
   scale_y_continuous(
     name = "Sameness Rate",
     sec.axis = sec_axis(~.*100, name="Number of Communities",breaks = seq(10,120,10)))+
-      labs(x="Resolution")+
-      scale_x_continuous(n.breaks = 10)
+      labs(x="Resolution",title = "American Football Network Data")+
+      scale_x_continuous(n.breaks = 10)+
+  theme_bw()
+
+league_ids<- read_delim("football.txt", delim = "=", 
+    escape_double = FALSE, col_names = FALSE, 
+    trim_ws = TRUE, skip = 4)
+
+league_ids=league_ids[complete.cases(league_ids),]
+colnames(league_ids)<-c("value","conference")
+
+```
+
+I decided to use R and Rmarkdown to complete this assignment because I wanted to experiment with systematically changing the resolution parameter (for the Louvain community detection method). By contrast,  Gephi makes it difficult to complete the same experiment. I use R's ```ForceAtlas2``` to achieve a Forced Altas layout and I use R's ```resolution``` to iteratively tune the resolution parameter. 
+
+### Which resolution to use? 
+
+According to the ```football.txt``` file, college team/node values correspond to team conferences. 
+
+```{r,echo=FALSE}
+kableExtra::kable(league_ids)
+```
+
+I pick a resolution value $t^*$ such that: (i) the number of communities equals the number of conferences, namely 12; and, (ii) each conference has, on average, the majority of its teams belong to to the same community. I operationalize this second requirement by first computing the share of top community (largest number of occurrences) per conference group, second determining the median share, and finally adjusting the resolution parameter such that this median share is maximized. Denote this median share value as the *sameness rate*. 
+
+I search over a grid of 100 values of the resolution parameter from 0.01 to 1.01 by 0.01 increments. 
+
+The figure below presents the *sameness rate*- measured by the blue line and left vertical axis- and the number of communities-measured by the black line and right vertical axis-in the same plot. The red dashed lines correspond to the smallest/largest resolution values that yield 12 communities. Based on the small blue spike that is intersected by the red dashed boundary line, I choose $t^*=0.32$ as the resolution value. 
+
+```{r,echo=FALSE}
+plot1
+```
+
+```{r,include=FALSE}
+library(ggnetwork)
+c1=cluster_resolution(df1, t=min_res,RandomOrder=NULL)
+  c1=as.data.frame(c1)
+  c1$node_id=rownames(c1)%>%as.numeric()
+  rownames(c1)<-c()
+
+  c1=c1%>%inner_join(df_nodes,by="node_id")%>%
+    mutate(program_group=as.character(program_group))%>%
+    inner_join(league_ids,by=c("program_group"="value"))
+  
+  c1_coords=select(c1,node_id,x,y)
+  
+  df_edges=df1%>%inner_join(c1_coords,by=c("from"="node_id"))%>%
+    inner_join(c1_coords,by=c("to"="node_id"))%>%
+    rename(x=x.x,
+           y=y.x,
+           xend=x.y,
+           yend=y.y)
+  
+  plot2=ggplot(c1, aes(x = x, y = y)) +
+        geom_edges(data=df_edges,alpha=0.2,aes(x = x, y = y, xend = xend, yend = yend))+
+    geom_nodes(aes(color=as.factor(community)))+
+    theme_blank()+
+    labs(color="Community ID")
+  
+  c1_res=c1%>%group_by(community,program_group)%>%
+    summarise(count=n())%>%
+    ungroup()%>%
+    group_by(program_group)%>%
+    summarise(top_c=max(count)/sum(count))%>%
+    ungroup()%>%
+    mutate(program_group=as.character(program_group))%>%
+    inner_join(league_ids,by=c("program_group"="value"))%>%
+    select(Conference=conference,`Top Community Share`=top_c)%>%
+    arrange(-`Top Community Share`)
+
+```
+
+
+```{r,echo=FALSE}
+plot2
+kableExtra::kable(c1_res,digits = 2)
+```
+Using the Forced Atlas layout, the college football league does appear to have some community structure to it. Using the $t^*=0.32$ resolution does a pretty good job matching communities to conferences: 7 out of 12 conferences consist of exactly one community. On the lower end, there is less of tight fit especially with the "Independents" conference. This shouldn't come as a shock given which schools belong to the "Independents" conference;  Central Florida, Connecticut, Navy, Notre Dame, and Utah State are clearly a diverse group of programs with little in common save football conference membership. By contrast, the "Big 10" conference is exclusive to the MidWest. 
+
+
+```{r,echo=FALSE,include=FALSE}
+
+c1$between=betweenness(foot_ball)
+
+between_plot=ggplot(data=c1,aes(x=as.factor(community),y=between))+
+  geom_violin(aes(fill=as.factor(community)))+
+  theme_bw()+
+  labs(x="Community ID",y="Betweeness")+
+  theme(legend.position = "none")
+
+```
+## How are betweenness centrality and community structure related?
+
+```{r,echo=FALSE}
+between_plot
+```
+Based on the above figure, there doesn't appear to be a strong relationship between between "betweeness" and "modularity". Nodes within a community can all have betweeness scores that relatively close to one another; see communities 4+5. However for other communities, such as 6 or 12, there's substantial betweeness variation. 
+
+## Real network? 
+
+I use data my own data on containerized shipping schedules for 2015 North American imports from BlueWater Reporting. In this network, a node is a port and an edge represents a scheduled port-to-port connection. Edges are weighted by total traffic. 
+
+As with before, I iterate through a variety of different resolution parameters and choose $t*=0.86.$ At this resolution, I pick up nine (9) communities. 
+
+```{r,echo=FALSE,include=TRUE}
+
+network_data <- read_csv("/Users/davidmterner/Desktop/IU/INFO/Complex Systems/Carbon Ship 1/network_data.csv")
+network_data=filter(network_data,year==2015)
+port_coords=rbind(select(network_data,port=port_o,lon=lon_o,lat=lat_o),
+      select(network_data,port=port_d,lon=lon_d,lat=lat_d))%>%
+  unique.data.frame()%>%
+  group_by(port)%>%
+  summarise(lon=mean(lon),
+            lat=mean(lat))%>%
+  ungroup()
+
+network_dataf=network_data%>%select(from=port_o,to=port_d,weight=capacity)
+sea_net=igraph::graph_from_data_frame(network_dataf,directed = TRUE)
+
+port_country=rbind(network_data%>%select(port=port_o,country=country_o),
+      network_data%>%select(port=port_d,country=country_d))%>%
+  unique.data.frame()
+
+port_country$country%>%unique()%>%length()
+      
+sea_matrix=sea_net%>%as_adjacency_matrix()
+
+
+
+```
+
+```{r,echo=FALSE,include=FALSE}
+resolution_df=data.frame()
+for(i in seq(0.01,1.01,by=0.05)){
+  #print(i)
+  c1=cluster_resolution(network_dataf, t=i,RandomOrder=NULL)
+  c1=as.data.frame(c1)
+  c1$node_id=rownames(c1)
+  rownames(c1)<-c()
+
+  c1=c1%>%inner_join(select(port_country,node_id=port,country),
+                     by="node_id")
+
+  min1=c1%>%group_by(community,country)%>%
+    summarise(count=n())%>%
+    ungroup()%>%
+    group_by(country)%>%
+    mutate(top_c=max(count)/sum(count))%>%
+    ungroup()%>%
+    summarise(x1=median(top_c))%>%
+    unlist()
+
+  resolution_df=rbind(resolution_df,
+                    data.frame(res=i,
+                               min=min1,
+                               communities=  c1$community%>%unique()%>%length()))
+
+}
+
+max_res=resolution_df$res[which(resolution_df$min==1)%>%min()]
+
+plot3=ggplot(data=resolution_df,aes(x=res,y=min))+geom_line(color="blue")+
+  geom_line( aes(y=communities/100))+
+  #geom_vline(xintercept=min_res,color="red",linetype="dashed")+
+  geom_vline(xintercept=max_res,color="red",linetype="dashed")+
+  scale_y_continuous(
+    name = "Sameness Rate",
+    sec.axis = sec_axis(~.*100, name="Number of Communities",breaks = seq(10,120,10)))+
+      labs(x="Resolution",title = "North American Container Imports Network Data")+
+      scale_x_continuous(n.breaks = 10)+
+  theme_bw()
+
+```
+
+```{r,echo=FALSE}
+plot3
+```
+
+
+```{r,echo=FALSE,include=FALSE}
+c1=cluster_resolution(network_dataf, t=0.86,RandomOrder=NULL)
+c1=as.data.frame(c1)
+c1$node_id=rownames(c1)
+rownames(c1)<-c()
+
+c1=c1%>%inner_join(select(port_country,node_id=port,country),
+                     by="node_id")
+
+node_id_list=which(names(V(sea_net)) %in% c1$node_id)
+
+sea_net2=igraph::subgraph(sea_net,node_id_list)
+
+df1=igraph::as_data_frame(sea_net2)
+c1=cluster_resolution(df1, t=0.86,RandomOrder=NULL)
+c1=as.data.frame(c1)
+c1$node_id=rownames(c1)
+rownames(c1)<-c()
+set.seed(123)
+layout2 <- layout.forceatlas2(sea_net2, iterations=100)
+colnames(layout2)<-c("x","y")
+c2=cbind(c1,layout2)
+
+
+df_edges=df1%>%inner_join(c2,by=c("from"="node_id"))%>%
+    inner_join(c2,by=c("to"="node_id"))%>%
+    rename(x=x.x,
+           y=y.x,
+           xend=x.y,
+           yend=y.y)
+
+ plot3=ggplot(c2, aes(x = x, y = y)) +
+        geom_edges(data=df_edges,alpha=0.2,aes(x = x, y = y, xend = xend, yend = yend))+
+    geom_nodes(aes(color=as.factor(community)))+
+    theme_blank()+
+    labs(color="Community ID",
+         title="North American Container Imports Network Communities?")
+
+
+```
+
+
+```{r,echo=FALSE}
+ plot3
+```
+
+
+
+```{r,echo=FALSE,include=FALSE}
+pg_scores=page_rank(sea_net2,directed = TRUE,weights=E(sea_net2)$weights )
+ec_scores=eigen_centrality(sea_net2,directed = TRUE,weights=E(sea_net2)$weights )
+
+c2=c2%>%mutate(page_rank=pg_scores$vector,ec_scores=ec_scores$vector)
+
+world <- map_data("world")
+
+plot_map1=c2%>%inner_join(port_coords,by=c("node_id"="port"))%>%
+  ggplot()+
+  geom_map(
+    data = world, map = world,
+    aes(long, lat, map_id = region),
+  fill="white",color = "black",size=0.1)+ 
+  geom_point(aes(x=lon,y=lat,color=as.factor(community),size=ec_scores))+
+  theme_blank()+
+  labs(color="Communtity ID",size="Eigenvector Centrality")
+  
+```
+Without any additional detail, the preceding figure on port communities (e.g. position based on Forced Atlas, color based on membership) doesn't generate much intution abut the underlying network structure. 
+
+The final figure helps to crystalize the missing piece: geography. Community 1 roughly corresponds to Northen Chinese and South Korean ports + major West Coast ports. Community 2 represents Atlantic ocean facing ports. Community 3 is mostly ``Ring of Fire" ports (e.g. the spine of the American Continent, Australia, and Japan ). Community 4 is the North Atlantic. Community 5 is the Middle East and India. Community 6 corresponds with Mediterranean ports. Community 7 is South East Asia. Community 8 is Brazil and the Caribbean. Lastly, Community 9 doesn't have clear geographic orientation. 
+
+Ports are scaled in proportion to their eigenvector centrality. The size scale undescores the fact that South East Asia (Community 7) and Chinese and South Korean ports (Community 1) are home to the most centrally located ports. Put differently, port centrality and community stucture here tend to overlap pretty well, in part, becasue of the underyling geography of shipping schedules. Ports that are geographically proximate are likely to be on similar shippment rotations and are thus likely to be related to one another in a community sense. 
+
+Note that I excluded edges in this map to enhance the map's visual clarity. 
+
+
+```{r,echo=FALSE}
+plot_map1
 ```
