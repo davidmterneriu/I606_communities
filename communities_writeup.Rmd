@@ -99,6 +99,8 @@ colnames(league_ids)<-c("value","conference")
 
 I decided to use R and Rmarkdown to complete this assignment because I wanted to experiment with systematically changing the resolution parameter (for the Louvain community detection method). By contrast,  Gephi makes it difficult to complete the same experiment. I use R's ```ForceAtlas2``` to achieve a Forced Altas layout and I use R's ```resolution``` to iteratively tune the resolution parameter. 
 
+Feel free to check out my code on  [Github](https://github.com/davidmterneriu/I606_communities.git).
+
 ### Which resolution to use? 
 
 According to the ```football.txt``` file, college team/node values correspond to team conferences. 
